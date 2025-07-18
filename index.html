@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tic Tac Toe Online</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f8f9fa;
+      margin: 0;
+      padding: 0;
+    }
+    h1 { color: #333; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-gap: 5px;
+      justify-content: center;
+      margin: 20px auto;
+    }
+    .cell {
+      width: 100px;
+      height: 100px;
+      font-size: 2em;
+      background: white;
+      border: 2px solid #007bff;
+      cursor: pointer;
+    }
+    .chat-box, .scoreboard {
+      max-width: 300px;
+      margin: 10px auto;
+    }
+    .chat-messages {
+      height: 100px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 5px;
+      background: #fff;
+      text-align: left;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px;
+      font-size: 1em;
+    }
+    @media (max-width: 600px) {
+      .cell { width: 80px; height: 80px; font-size: 1.5em; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Multiplayer Tic Tac Toe</h1>
+  <input type="text" id="room" placeholder="Room name" />
+  <button onclick="joinRoom()">Join Room</button>
+  <p id="playerChoice"></p>
+  <div class="scoreboard">
+    <p>Skor X: <span id="scoreX">0</span> | O: <span id="scoreO">0</span> | Seri: <span id="scoreDraw">0</span></p>
+    <button onclick="resetGame()">Reset Game</button>
+  </div>
+  <div class="board" id="board"></div>
+
+  <div class="chat-box">
+    <div class="chat-messages" id="messages"></div>
+    <input type="text" id="chatInput" placeholder="Ketik pesan..." />
+    <button onclick="sendMessage()">Kirim</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCUlBCx4rDQNku1y3rV_Kf9sCG9Xf326NI",
+      authDomain: "suit-b1584.firebaseapp.com",
+      databaseURL: "https://suit-b1584-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "suit-b1584",
+      storageBucket: "suit-b1584.appspot.com",
+      messagingSenderId: "963137675385",
+      appId: "1:963137675385:web:10344f05352001afbd34a8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let currentPlayer = "";
+    let room = "";
+    let boardData = Array(9).fill("");
+
+    const board = document.getElementById("board");
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.index = i;
+      cell.onclick = () => handleClick(i);
+      board.appendChild(cell);
+    }
+
+    function joinRoom() {
+      room = document.getElementById("room").value;
+      currentPlayer = confirm("Main sebagai X? Tekan OK untuk X, Batal untuk O") ? "X" : "O";
+      document.getElementById("playerChoice").innerText = "Kamu adalah: " + currentPlayer;
+      onValue(ref(db, room + "/board"), (snapshot) => {
+        const data = snapshot.val();
+        if (data) updateBoard(data);
+      });
+      onValue(ref(db, room + "/chat"), (snapshot) => {
+        const data = snapshot.val();
+        if (data) updateChat(data);
+      });
+      onValue(ref(db, room + "/score"), (snapshot) => {
+        const data = snapshot.val();
+        if (data) updateScore(data);
+      });
+    }
+
+    function handleClick(index) {
+      if (boardData[index] !== "") return;
+      boardData[index] = currentPlayer;
+      updateBoard(boardData);
+      set(ref(db, room + "/board"), boardData);
+      checkWinner();
+    }
+
+    function updateBoard(data) {
+      boardData = data;
+      const cells = document.querySelectorAll(".cell");
+      data.forEach((val, i) => {
+        cells[i].innerText = val;
+      });
+    }
+
+    function resetGame() {
+      boardData = Array(9).fill("");
+      updateBoard(boardData);
+      set(ref(db, room + "/board"), boardData);
+    }
+
+    function checkWinner() {
+      const winPatterns = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+      ];
+      for (const pattern of winPatterns) {
+        const [a, b, c] = pattern;
+        if (boardData[a] && boardData[a] === boardData[b] && boardData[a] === boardData[c]) {
+          alert(currentPlayer + " menang!");
+          updateScoreBoard(currentPlayer);
+          return;
+        }
+      }
+      if (!boardData.includes("")) {
+        alert("Seri!");
+        updateScoreBoard("draw");
+      }
+    }
+
+    function updateScoreBoard(winner) {
+      const scoreRef = ref(db, room + "/score");
+      onValue(scoreRef, (snapshot) => {
+        let score = snapshot.val() || { X: 0, O: 0, draw: 0 };
+        if (winner === "draw") score.draw++;
+        else score[winner]++;
+        set(scoreRef, score);
+      }, { onlyOnce: true });
+    }
+
+    function updateScore(score) {
+      document.getElementById("scoreX").innerText = score.X || 0;
+      document.getElementById("scoreO").innerText = score.O || 0;
+      document.getElementById("scoreDraw").innerText = score.draw || 0;
+    }
+
+    function sendMessage() {
+      const input = document.getElementById("chatInput");
+      if (!input.value) return;
+      const msgRef = ref(db, room + "/chat");
+      onValue(msgRef, (snapshot) => {
+        let chat = snapshot.val() || [];
+        chat.push(currentPlayer + ": " + input.value);
+        set(msgRef, chat);
+        input.value = "";
+      }, { onlyOnce: true });
+    }
+
+    function updateChat(chat) {
+      const box = document.getElementById("messages");
+      box.innerHTML = chat.map(m => "<div>" + m + "</div>").join("");
+      box.scrollTop = box.scrollHeight;
+    }
+  </script>
+</body>
+</html>
